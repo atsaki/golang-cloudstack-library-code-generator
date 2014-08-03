@@ -1,0 +1,150 @@
+package cloudstack
+
+import (
+    "encoding/json"
+    "fmt"
+    {{ if .IsAsync }}
+      "time"
+    {{ end }}
+)
+
+type {{ title .Name }}Parameter struct {
+  {{ range $param := .Params }}
+    {{ title $param.Name }} *{{ paramType $param.Type }}
+  {{ end }}
+}
+
+{{ range $param := .Params }}
+  {{ if isString $param.Type }}
+    func (p *{{ title $.Name }}Parameter) Set{{ title $param.Name }}(v string) {
+        p.{{ title $param.Name }} = &{{ paramType $param.Type }}{v}
+    }
+  {{ end }}
+
+  {{ if isBoolean $param.Type }}
+    func (p *{{ title $.Name }}Parameter) Set{{ title $param.Name }}(v bool) {
+        p.{{ title $param.Name }} = &{{ paramType $param.Type }}{v}
+    }
+  {{ end }}
+
+  {{ if isInteger $param.Type }}
+    func (p *{{ title $.Name }}Parameter) Set{{ title $param.Name }}(v int) {
+        p.{{ title $param.Name }} = &{{ paramType $param.Type }}{v}
+    }
+  {{ end }}
+
+  {{ if isUUID $param.Type }}
+    func (p *{{ title $.Name }}Parameter) Set{{ title $param.Name }}(v string) {
+        p.{{ title $param.Name }} = &{{ paramType $param.Type }}{v}
+    }
+  {{ end }}
+{{ end }}
+
+func (p *{{ title .Name }}Parameter) ToMap() map[string]string {
+    m := map[string]string{}
+    {{ range $param := .Params }}
+      {{ if isBoolean $param.Type }}
+        if p.{{ title $param.Name }} != nil {
+            if p.{{ title $param.Name }}.Value {
+                m["{{ $param.Name }}"] = "true"
+            } else {
+                m["{{ $param.Name }}"] = "false"
+            }
+        }
+      {{ else }}
+        if p.{{ title $param.Name }} != nil {
+            m["{{ $param.Name }}"] = fmt.Sprint(p.{{ title $param.Name }}.Value)
+        }
+      {{ end }}
+    {{ end }}
+    return m
+}
+
+type {{ title .Name }}Response struct {
+    {{ if isListAPI .Name }}
+      Count float64 `json:"count"`
+      {{ objectName .Name | title }}  []struct {
+    {{ else if isQueryAsyncJobResult .Name }}
+    {{ else }}
+      {{ objectName .Name | title }}  struct {
+    {{ end }}
+      {{ range $resp1 := .Response }}
+        {{ if isList $resp1.Type }} 
+          {{ title $resp1.Name }} []struct{
+
+            {{ range $resp2 := $resp1.Response }}
+              {{ if isList $resp2.Type }} 
+                {{ title $resp2.Name }} []struct{
+
+                  {{ range $resp3 := $resp2.Response }}
+                    {{ if isList $resp3.Type }} 
+                      {{ title $resp3.Name }} interface{} `json:"{{ toLower $resp3.Name }}"`
+                    {{ else if isId $resp3.Name }}
+                      {{ title $resp3.Name }} ID `json:"{{ toLower $resp3.Name }}"`
+                    {{ else if $resp3.Name }}
+                      {{ title $resp3.Name }} {{ respType $resp3.Type }} `json:"{{ toLower $resp3.Name }}"`
+                    {{ end }}
+                  {{ end }}
+
+                } `json:"{{ toLower $resp2.Name }}"`
+              {{ else if isId $resp2.Name }}
+                {{ title $resp2.Name }} ID `json:"{{ toLower $resp2.Name }}"`
+              {{ else if $resp2.Name }}
+                {{ title $resp2.Name }} {{ respType $resp2.Type }} `json:"{{ toLower $resp2.Name }}"`
+              {{ end }}
+            {{ end }}
+
+          } `json:"{{ toLower $resp1.Name }}"`
+        {{ else if isId $resp1.Name }}
+          {{ title $resp1.Name }} ID `json:"{{ toLower $resp1.Name }}"`
+        {{ else if $resp1.Name }}
+          {{ title $resp1.Name }} {{ respType $resp1.Type }} `json:"{{ toLower $resp1.Name }}"`
+        {{ end }}
+
+      {{ end }}
+
+    {{ if isQueryAsyncJobResult .Name }}
+    {{ else }}
+      } `json:"{{ objectName .Name | toLower }}"`
+    {{ end }}
+}
+
+func (c *CloudStackAPIClient) {{ title .Name }}(p {{ title .Name }}Parameter) (*{{ title .Name }}Response, error) {
+    r := c.Request("{{ .Name }}", p.ToMap())
+    {{ if .IsAsync }}
+      var v struct {
+          {{ toLower .Name | title }}response struct {
+              Jobid ID `json:"jobid"`
+              Id    ID `json:"id"`
+          } `json:"{{ toLower .Name }}response"`
+      }
+      json.Unmarshal(r, &v)
+      jobid := v.{{ toLower .Name | title }}response.Jobid
+
+      qp := QueryAsyncJobResultParameter{}
+      qp.SetJobid(fmt.Sprint(jobid))
+      var qr *QueryAsyncJobResultResponse
+      var err error
+
+      for {
+          if qr, err = c.QueryAsyncJobResult(qp); err != nil {
+              panic(err)
+          }
+          if qr.Jobstatus != 0 {
+              break
+          }
+          time.Sleep(1 * time.Second)
+      }
+
+      resp := new({{ title .Name }}Response)
+      json.Unmarshal(qr.Jobresult, resp)
+      return resp, nil
+    {{ else }}
+      v := new (struct {
+          {{ toLower .Name | title }}response {{ title .Name }}Response `json:"{{ toLower .Name }}response"`
+      })
+
+      json.Unmarshal(r, v)
+      return &v.{{ toLower .Name | title }}response, nil
+    {{ end }}
+}
