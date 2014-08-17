@@ -71,27 +71,27 @@ func GetObjectName(s string) string {
 
 func ParamType(s string) string {
 	if s == "string" || s == "tzdata" {
-		return "String"
+		return "*String"
 	} else if s == "boolean" {
-		return "Boolean"
+		return "*Boolean"
 	} else if s == "short" || s == "long" || s == "integer" {
-		return "Integer"
+		return "*Integer"
 	} else if s == "uuid" {
-		return "UUID"
+		return "*ID"
 	} else {
-		return "String"
+		return "*String"
 	}
 }
 
 func RespType(s string) string {
 	if s == "boolean" {
-		return "bool"
+		return "*Boolean"
 	} else if s == "short" || s == "long" || s == "integer" {
-		return "float64"
+		return "*Number"
 	} else if s == "responseobject" {
 		return "json.RawMessage"
 	} else {
-		return "string"
+		return "*String"
 	}
 }
 
@@ -104,7 +104,8 @@ func IsString(s string) bool  { return s == "string" || s == "tzdata" }
 func IsListAPI(s string) bool             { return strings.HasPrefix(strings.ToLower(s), "list") }
 func IsQueryAsyncJobResult(s string) bool { return strings.ToLower(s) == "queryasyncjobresult" }
 
-func IsId(s string) bool { return strings.HasSuffix(strings.ToLower(s), "id") }
+func IsId(s string) bool  { return strings.HasSuffix(strings.ToLower(s), "id") }
+func IsIds(s string) bool { return strings.HasSuffix(strings.ToLower(s), "ids") }
 
 func main() {
 
@@ -129,6 +130,7 @@ func main() {
 		"isListAPI":             IsListAPI,
 		"isQueryAsyncJobResult": IsQueryAsyncJobResult,
 		"isId":                  IsId,
+		"isIds":                 IsIds,
 	}
 	tmpl := template.Must(
 		template.New(templateFile).Funcs(funcMap).ParseFiles(templateFile))
@@ -159,8 +161,11 @@ func main() {
 		source, err := format.Source([]byte(s))
 		if err != nil {
 			log.Println(err)
+			ioutil.WriteFile(
+				directory+"/"+strings.ToLower(api.Name)+".go", []byte(s), 0644)
+		} else {
+			ioutil.WriteFile(
+				directory+"/"+strings.ToLower(api.Name)+".go", source, 0644)
 		}
-
-		ioutil.WriteFile(directory+"/"+strings.ToLower(api.Name)+".go", source, 0644)
 	}
 }
