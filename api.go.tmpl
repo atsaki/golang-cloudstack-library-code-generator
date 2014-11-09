@@ -3,8 +3,10 @@ package cloudstack
 import (
     "encoding/json"
     "fmt"
-    {{ if .IsAsync }}
-      "time"
+    "log"
+
+    {{ if importStrings .Params }}
+      "strings"
     {{ end }}
 )
 
@@ -17,37 +19,31 @@ type {{ title .Name }}Parameter struct {
 {{ range $param := .Params }}
   {{ if isString $param.Type }}
     func (p *{{ title $.Name }}Parameter) Set{{ title $param.Name }}(s string) {
-        if p.{{ title $param.Name }} == nil {
-            p.{{ title $param.Name }} = new(String)
-        }
-        p.{{ title $param.Name }}.SetValue(s)
+        p.{{ title $param.Name }}.String = s
+        p.{{ title $param.Name }}.Valid = true
     }
-  {{ end }}
-
-  {{ if isBoolean $param.Type }}
+  {{ else if isBoolean $param.Type }}
     func (p *{{ title $.Name }}Parameter) Set{{ title $param.Name }}(b bool) {
-        if p.{{ title $param.Name }} == nil {
-            p.{{ title $param.Name }} = new(Boolean)
-        }
-        p.{{ title $param.Name }}.SetValue(b)
+        p.{{ title $param.Name }}.Bool = b
+        p.{{ title $param.Name }}.Valid = true
     }
-  {{ end }}
-
-  {{ if isInteger $param.Type }}
-    func (p *{{ title $.Name }}Parameter) Set{{ title $param.Name }}(n int) {
-        if p.{{ title $param.Name }} == nil {
-            p.{{ title $param.Name }} = new(Integer)
-        }
-        p.{{ title $param.Name }}.SetValue(n)
+  {{ else if isInteger $param.Type }}
+    func (p *{{ title $.Name }}Parameter) Set{{ title $param.Name }}(n int64) {
+        p.{{ title $param.Name }}.Int64 = n
+        p.{{ title $param.Name }}.Valid = true
     }
-  {{ end }}
-
-  {{ if isUUID $param.Type }}
+  {{ else if isUUID $param.Type }}
     func (p *{{ title $.Name }}Parameter) Set{{ title $param.Name }}(s string) {
-        if p.{{ title $param.Name }} == nil {
-            p.{{ title $param.Name }} = new(ID)
-        }
-        p.{{ title $param.Name }}.SetValue(s)
+        p.{{ title $param.Name }}.String = s
+        p.{{ title $param.Name }}.Valid = true
+    }
+  {{ else if isList $param.Type }}
+    func (p *{{ title $.Name }}Parameter) Set{{ title $param.Name }}(l []string) {
+        p.{{ title $param.Name }} = l
+    }
+  {{ else if isMap $param.Type }}
+    func (p *{{ title $.Name }}Parameter) Set{{ title $param.Name }}(m map[string]string) {
+        p.{{ title $param.Name }} = m
     }
   {{ end }}
 {{ end }}
@@ -55,126 +51,121 @@ type {{ title .Name }}Parameter struct {
 func (p *{{ title .Name }}Parameter) ToMap() map[string]string {
     m := map[string]string{}
     {{ range $param := .Params }}
-      {{ if isBoolean $param.Type }}
-        if p.{{ title $param.Name }} != nil {
-            if p.{{ title $param.Name }}.GetValue() {
-                m["{{ $param.Name }}"] = "true"
-            } else {
-                m["{{ $param.Name }}"] = "false"
-            }
-        }
-      {{ else }}
-        if p.{{ title $param.Name }} != nil {
-            m["{{ $param.Name }}"] = fmt.Sprint(p.{{ title $param.Name }}.GetValue())
+
+      {{ if isString $param.Type }}
+        if p.{{ title $param.Name }}.Valid {
+          m["{{ $param.Name }}"] = fmt.Sprint(p.{{ title $param.Name }}.String)
         }
       {{ end }}
+
+      {{ if isBoolean $param.Type }}
+        if p.{{ title $param.Name }}.Valid {
+          m["{{ $param.Name }}"] = fmt.Sprint(p.{{ title $param.Name }}.Bool)
+        }
+      {{ end }}
+
+      {{ if isInteger $param.Type }}
+        if p.{{ title $param.Name }}.Valid {
+          m["{{ $param.Name }}"] = fmt.Sprint(p.{{ title $param.Name }}.Int64)
+        }
+      {{ end }}
+
+      {{ if isUUID $param.Type }}
+        if p.{{ title $param.Name }}.Valid {
+          m["{{ $param.Name }}"] = fmt.Sprint(p.{{ title $param.Name }}.String)
+        }
+      {{ end }}
+
+      {{ if isList $param.Type }}
+          if len(p.{{ title $param.Name }}) > 0 {
+            m["{{ $param.Name }}"] = strings.Join(p.{{ title $param.Name }}, ",")
+          }
+      {{ end }}
+
+      {{ if isMap $param.Type }}
+        if len(p.{{ title $param.Name }}) > 0 {
+          i := 0
+          for key, value := range m {
+              m[fmt.Sprintf("{{ $param.Name }}[%d].key", i)] = key
+              m[fmt.Sprintf("{{ $param.Name }}[%d].value", i)] = value
+              i += 1
+          }
+        }
+      {{ end }}
+
     {{ end }}
     return m
 }
 
-type {{ title .Name }}Response struct {
-    {{ if isListAPI .Name }}
-      Count float64 `json:"count"`
-      {{ objectName .Name | title }}  []struct {
-    {{ else if isQueryAsyncJobResult .Name }}
-    {{ else }}
-      {{ objectName .Name | title }}  struct {
-    {{ end }}
-      {{ range $resp1 := .Response }}
-        {{ if and (isList $resp1.Type) $resp1.Response }} 
-          {{ title $resp1.Name }} []struct{
+{{ if isListAPI .Name }}
+  func (c *Client) {{ title .Name }}(p {{ title .Name }}Parameter) ([]{{ objectName .Name | title }}, error) {
+      var v map[string]json.RawMessage
+      var ret []{{ objectName .Name | title }}
+      b, err := c.Request("{{ .Name }}", p.ToMap())
+      if err != nil {
+          log.Println("Request failed:", err)
+          return ret, err
+      }
+      err = json.Unmarshal(b, &v)
+      if err != nil {
+          return ret, fmt.Errorf("Failed to unmarshal: %s", string(b))
+      }
 
-            {{ range $resp2 := $resp1.Response }}
-              {{ if and (isList $resp2.Type) $resp2.Response }} 
-                {{ title $resp2.Name }} []struct{
+      content, ok := v["{{ objectName .Name | toLower  }}"]
+      if !ok {
+          if len(v) == 0 {
+              return ret, nil
+          }
+          errortext, _ := v["errortext"]
+          return ret, fmt.Errorf(string(errortext))
+      }
+      err = json.Unmarshal(content, &ret)
+      if err != nil {
+          return ret, fmt.Errorf("Failed to unmarshal: %s", string(content))
+      }
+      return ret, nil
+  }
+{{ else }}
+  func (c *Client) {{ title .Name }}(p {{ title .Name }}Parameter) ({{ objectName .Name | title }}, error) {
+  {{ if (objectName .Name | isResult) }}
+      var ret Result
+      b, err := c.Request("{{ .Name }}", p.ToMap())
+      if err != nil {
+          log.Println("Request failed:", err)
+          return ret, err
+      }
+      err = json.Unmarshal(b, &ret)
+      if err != nil {
+          return ret, fmt.Errorf("Failed to unmarshal: %s", string(b))
+      }
+      return ret, nil
+  {{ else }}
+      var v map[string]json.RawMessage
+      var ret {{ objectName .Name | title }}
+      b, err := c.Request("{{ .Name }}", p.ToMap())
+      if err != nil {
+          log.Println("Request failed:", err)
+          return ret, err
+      }
+      err = json.Unmarshal(b, &v)
+      if err != nil {
+          return ret, fmt.Errorf("Failed to unmarshal: %s", string(b))
+      }
 
-                  {{ range $resp3 := $resp2.Response }}
-                    {{ if and (isList $resp3.Type) $resp3.Response }} 
-                      {{ title $resp3.Name }} interface{} `json:"{{ toLower $resp3.Name }}"`
-                    {{ else if isList $resp3.Type }}
-                      {{ if isIds $resp3.Name }}
-                        {{ title $resp3.Name }} []*ID `json:"{{ toLower $resp3.Name }}"`
-                      {{ else }}
-                        {{ title $resp3.Name }} []*String `json:"{{ toLower $resp3.Name }}"`
-                      {{ end }}
-                    {{ else if isId $resp3.Name }}
-                      {{ title $resp3.Name }} *ID `json:"{{ toLower $resp3.Name }}"`
-                    {{ else if $resp3.Name }}
-                      {{ title $resp3.Name }} {{ respType $resp3.Type }} `json:"{{ toLower $resp3.Name }}"`
-                    {{ end }}
-                  {{ end }}
-
-                } `json:"{{ toLower $resp2.Name }}"`
-              {{ else if isList $resp2.Type }}
-                {{ if isIds $resp2.Name }}
-                  {{ title $resp2.Name }} []*ID `json:"{{ toLower $resp2.Name }}"`
-                {{ else }}
-                  {{ title $resp2.Name }} []*String `json:"{{ toLower $resp2.Name }}"`
-                {{ end }}
-              {{ else if isId $resp2.Name }}
-                {{ title $resp2.Name }} *ID `json:"{{ toLower $resp2.Name }}"`
-              {{ else if $resp2.Name }}
-                {{ title $resp2.Name }} {{ respType $resp2.Type }} `json:"{{ toLower $resp2.Name }}"`
-              {{ end }}
-            {{ end }}
-
-          } `json:"{{ toLower $resp1.Name }}"`
-        {{ else if isList $resp1.Type }}
-          {{ if isIds $resp1.Name }}
-            {{ title $resp1.Name }} []*ID `json:"{{ toLower $resp1.Name }}"`
-          {{ else }}
-            {{ title $resp1.Name }} []*String `json:"{{ toLower $resp1.Name }}"`
-          {{ end }}
-        {{ else if isId $resp1.Name }}
-          {{ title $resp1.Name }} *ID `json:"{{ toLower $resp1.Name }}"`
-        {{ else if $resp1.Name }}
-          {{ title $resp1.Name }} {{ respType $resp1.Type }} `json:"{{ toLower $resp1.Name }}"`
-        {{ end }}
-
+      {{ if isIpAddressCommand .Name }}
+      content, ok := v["ipaddress"]
+      {{ else }}
+      content, ok := v["{{ objectName .Name | toLower  }}"]
       {{ end }}
-
-    {{ if isQueryAsyncJobResult .Name }}
-    {{ else }}
-      } `json:"{{ objectName .Name | toLower }}"`
-    {{ end }}
-}
-
-func (c *CloudStackAPIClient) {{ title .Name }}(p {{ title .Name }}Parameter) (*{{ title .Name }}Response, error) {
-    r := c.Request("{{ .Name }}", p.ToMap())
-    {{ if .IsAsync }}
-      var v struct {
-          {{ toLower .Name | title }}response struct {
-              Jobid ID `json:"jobid"`
-              Id    ID `json:"id"`
-          } `json:"{{ toLower .Name }}response"`
+      if !ok {
+          errortext, _ := v["errortext"]
+          return ret, fmt.Errorf(string(errortext))
       }
-      json.Unmarshal(r, &v)
-      jobid := v.{{ toLower .Name | title }}response.Jobid
-
-      qp := QueryAsyncJobResultParameter{}
-      qp.SetJobid(fmt.Sprint(jobid))
-      var qr *QueryAsyncJobResultResponse
-      var err error
-
-      for {
-          if qr, err = c.QueryAsyncJobResult(qp); err != nil {
-              panic(err)
-          }
-          if qr.Jobstatus != 0 {
-              break
-          }
-          time.Sleep(1 * time.Second)
+      err = json.Unmarshal(content, &ret)
+      if err != nil {
+          return ret, fmt.Errorf("Failed to unmarshal: %s", string(content))
       }
-
-      resp := new({{ title .Name }}Response)
-      json.Unmarshal(qr.Jobresult, resp)
-      return resp, nil
-    {{ else }}
-      v := new (struct {
-          {{ toLower .Name | title }}response {{ title .Name }}Response `json:"{{ toLower .Name }}response"`
-      })
-
-      json.Unmarshal(r, v)
-      return &v.{{ toLower .Name | title }}response, nil
-    {{ end }}
-}
+      return ret, nil
+  {{ end }}
+  }
+{{ end }}

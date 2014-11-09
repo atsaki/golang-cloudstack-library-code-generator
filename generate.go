@@ -1,7 +1,6 @@
 package main
 
 import (
-	"./cloudstack_library_code_generator"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -13,6 +12,8 @@ import (
 	"sort"
 	"strings"
 	"text/template"
+
+	"./vars"
 )
 
 type Param struct {
@@ -66,46 +67,69 @@ func (l ResponseList) Sort() {
 }
 
 func GetObjectName(s string) string {
-	return cloudstack_library_code_generator.ApiToObjectNameMap[s]
+	return vars.ApiToObjectNameMap[s]
 }
 
 func ParamType(s string) string {
 	if s == "string" || s == "tzdata" {
-		return "*String"
+		return "NullString"
 	} else if s == "boolean" {
-		return "*Boolean"
+		return "NullBool"
 	} else if s == "short" || s == "long" || s == "integer" {
-		return "*Integer"
+		return "NullInt64"
 	} else if s == "uuid" {
-		return "*ID"
+		return "ID"
+	} else if s == "list" {
+		return "[]string"
+	} else if s == "map" {
+		return "map[string]string"
 	} else {
-		return "*String"
+		return "NullString"
 	}
 }
 
 func RespType(s string) string {
 	if s == "boolean" {
-		return "*Boolean"
+		return "NullBool"
 	} else if s == "short" || s == "long" || s == "integer" {
-		return "*Number"
+		return "NullInt64"
 	} else if s == "responseobject" {
 		return "json.RawMessage"
 	} else {
-		return "*String"
+		return "NullString"
 	}
 }
 
-func IsList(s string) bool    { return s == "list" || s == "set" }
 func IsBoolean(s string) bool { return s == "boolean" }
 func IsUUID(s string) bool    { return s == "uuid" }
 func IsInteger(s string) bool { return s == "short" || s == "long" || s == "integer" }
 func IsString(s string) bool  { return s == "string" || s == "tzdata" }
+func IsMap(s string) bool     { return s == "map" }
+func IsList(s string) bool    { return s == "list" || s == "set" }
+func IsResult(s string) bool  { return strings.ToLower(s) == "result" }
 
 func IsListAPI(s string) bool             { return strings.HasPrefix(strings.ToLower(s), "list") }
 func IsQueryAsyncJobResult(s string) bool { return strings.ToLower(s) == "queryasyncjobresult" }
+func IsTags(s string) bool                { return strings.ToLower(s) == "tags" }
+func IsService(s string) bool             { return strings.ToLower(s) == "service" }
+func IsIpAddressCommand(s string) bool {
+	return strings.ToLower(s) == "associateipaddress" ||
+		strings.ToLower(s) == "updateipaddress"
+}
 
 func IsId(s string) bool  { return strings.HasSuffix(strings.ToLower(s), "id") }
 func IsIds(s string) bool { return strings.HasSuffix(strings.ToLower(s), "ids") }
+
+func ImportStrings(params []Param) bool {
+	b := false
+	for _, p := range params {
+		if p.Type == "list" {
+			b = true
+			break
+		}
+	}
+	return b
+}
 
 func main() {
 
@@ -115,7 +139,6 @@ func main() {
 		panic(err)
 	}
 
-	templateFile := os.Args[2]
 	funcMap := template.FuncMap{
 		"title":                 strings.Title,
 		"toLower":               strings.ToLower,
@@ -125,27 +148,35 @@ func main() {
 		"isList":                IsList,
 		"isBoolean":             IsBoolean,
 		"isUUID":                IsUUID,
+		"isMap":                 IsMap,
 		"isInteger":             IsInteger,
 		"isString":              IsString,
+		"isResult":              IsResult,
 		"isListAPI":             IsListAPI,
 		"isQueryAsyncJobResult": IsQueryAsyncJobResult,
+		"isIpAddressCommand":    IsIpAddressCommand,
+		"isTags":                IsTags,
+		"isService":             IsService,
 		"isId":                  IsId,
 		"isIds":                 IsIds,
+		"importStrings":         ImportStrings,
 	}
-	tmpl := template.Must(
-		template.New(templateFile).Funcs(funcMap).ParseFiles(templateFile))
 
-	directory := os.Args[3]
-
+	var tmpl *template.Template
+	var directory string
 	var resp ListApisResponse
 	if err := json.Unmarshal(input, &resp); err != nil {
 		panic(err)
 	}
 
+	directory = "apis"
+	tmpl = template.Must(
+		template.New("api.go.tmpl").Funcs(funcMap).ParseFiles("api.go.tmpl"))
+
 	for _, api := range resp.ListApisResponse.Api {
 
 		if api.Name == "queryAsyncJobResult" {
-			api.Response = append(api.Response, Response{Name: "jobid", Type: "string"})
+			continue
 		}
 		fmt.Println(api.Name)
 		ParamList(api.Params).Sort()
@@ -167,5 +198,37 @@ func main() {
 			ioutil.WriteFile(
 				directory+"/"+strings.ToLower(api.Name)+".go", source, 0644)
 		}
+	}
+
+	directory = "structs"
+	tmpl = template.Must(
+		template.New("struct.go.tmpl").Funcs(funcMap).ParseFiles("struct.go.tmpl"))
+
+	for _, api := range resp.ListApisResponse.Api {
+
+		fmt.Println(api.Name)
+		ResponseList(api.Response).Sort()
+
+		var b bytes.Buffer
+		if err = tmpl.Execute(&b, api); err != nil {
+			panic(err)
+		}
+
+		re := regexp.MustCompile(`(?m)^\s+$`)
+		s := strings.Replace(re.ReplaceAllString(b.String(), ""), "\n\n", "\n", -1)
+		source, err := format.Source([]byte(s))
+		if err != nil {
+			log.Println(err)
+			ioutil.WriteFile(
+				directory+"/"+strings.ToLower(GetObjectName(api.Name))+"-"+strings.ToLower(api.Name)+".go", []byte(s), 0644)
+		} else {
+			ioutil.WriteFile(
+				directory+"/"+strings.ToLower(GetObjectName(api.Name))+"-"+strings.ToLower(api.Name)+".go", source, 0644)
+		}
+	}
+
+	f, err := os.Create("isasync.txt")
+	for _, api := range resp.ListApisResponse.Api {
+		f.WriteString(fmt.Sprintf("\"%v\": %v,\n", api.Name, api.IsAsync))
 	}
 }
