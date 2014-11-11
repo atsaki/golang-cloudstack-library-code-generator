@@ -112,9 +112,15 @@ func IsListAPI(s string) bool             { return strings.HasPrefix(strings.ToL
 func IsQueryAsyncJobResult(s string) bool { return strings.ToLower(s) == "queryasyncjobresult" }
 func IsTags(s string) bool                { return strings.ToLower(s) == "tags" }
 func IsService(s string) bool             { return strings.ToLower(s) == "service" }
+func IsEgressRule(s string) bool          { return strings.ToLower(s) == "egressrule" }
+func IsIngressRule(s string) bool         { return strings.ToLower(s) == "ingressrule" }
 func IsIpAddressCommand(s string) bool {
 	return strings.ToLower(s) == "associateipaddress" ||
 		strings.ToLower(s) == "updateipaddress"
+}
+func IsSecurityGroupCommand(s string) bool {
+	return strings.ToLower(s) == "authorizesecuritygroupegress" ||
+		strings.ToLower(s) == "authorizesecuritygroupingress"
 }
 
 func IsId(s string) bool  { return strings.HasSuffix(strings.ToLower(s), "id") }
@@ -140,26 +146,29 @@ func main() {
 	}
 
 	funcMap := template.FuncMap{
-		"title":                 strings.Title,
-		"toLower":               strings.ToLower,
-		"objectName":            GetObjectName,
-		"respType":              RespType,
-		"paramType":             ParamType,
-		"isList":                IsList,
-		"isBoolean":             IsBoolean,
-		"isUUID":                IsUUID,
-		"isMap":                 IsMap,
-		"isInteger":             IsInteger,
-		"isString":              IsString,
-		"isResult":              IsResult,
-		"isListAPI":             IsListAPI,
-		"isQueryAsyncJobResult": IsQueryAsyncJobResult,
-		"isIpAddressCommand":    IsIpAddressCommand,
-		"isTags":                IsTags,
-		"isService":             IsService,
-		"isId":                  IsId,
-		"isIds":                 IsIds,
-		"importStrings":         ImportStrings,
+		"title":                  strings.Title,
+		"toLower":                strings.ToLower,
+		"objectName":             GetObjectName,
+		"respType":               RespType,
+		"paramType":              ParamType,
+		"isList":                 IsList,
+		"isBoolean":              IsBoolean,
+		"isUUID":                 IsUUID,
+		"isMap":                  IsMap,
+		"isInteger":              IsInteger,
+		"isString":               IsString,
+		"isResult":               IsResult,
+		"isListAPI":              IsListAPI,
+		"isQueryAsyncJobResult":  IsQueryAsyncJobResult,
+		"isIpAddressCommand":     IsIpAddressCommand,
+		"isSecurityGroupCommand": IsSecurityGroupCommand,
+		"isTags":                 IsTags,
+		"isService":              IsService,
+		"isEgressRule":           IsEgressRule,
+		"isIngressRule":          IsIngressRule,
+		"isId":                   IsId,
+		"isIds":                  IsIds,
+		"importStrings":          ImportStrings,
 	}
 
 	var tmpl *template.Template

@@ -7,6 +7,10 @@ type {{ objectName .Name | title }} struct {
         Tag []Tag `json:"tags"`
       {{ else if isService $resp1.Name }}
         Service []Networkservice `json:"service"`
+      {{ else if isEgressRule $resp1.Name }}
+       Egressrule  []Securitygroupegress  `json:"egressrule"`
+      {{ else if isIngressRule $resp1.Name }}
+       Ingressrule  []Securitygroupingress  `json:"ingressrule"`
       {{ else }}
         {{ title $resp1.Name }} []{{ title $resp1.Name }}  `json:"{{ toLower $resp1.Name }}"`
       {{ end }}
