@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -66,8 +67,46 @@ func (l ResponseList) Sort() {
 	sort.Sort(l)
 }
 
+func Unique(xs interface{}, fn func(interface{}, interface{}) bool) interface{} {
+	vs := reflect.ValueOf(xs)
+	ys := reflect.MakeSlice(vs.Type(), 0, vs.Len())
+
+	for i := 0; i < vs.Len(); i++ {
+		if i == 0 {
+			ys = reflect.Append(ys, vs.Index(i))
+		} else {
+			// fmt.Println(vs.Index(i-1).Interface().(Param).Name, vs.Index(i).Interface().(Param).Name)
+			if !fn(vs.Index(i-1).Interface(), vs.Index(i).Interface()) {
+				ys = reflect.Append(ys, vs.Index(i))
+			} else {
+				// fmt.Println("REDUNDANNT", vs.Index(i-1).Interface())
+			}
+		}
+	}
+	return ys.Interface()
+}
+
 func GetObjectName(s string) string {
 	return vars.ApiToObjectNameMap[s]
+}
+
+func GetCamelCase(s string) string {
+	camel, ok := vars.CamelMap[strings.ToLower(s)]
+	if s != "" && !ok {
+		log.Fatalf("%s is not found in CamelMap", strings.ToLower(s))
+	}
+	return camel
+}
+
+func GetFileFromApi(s string) string {
+	for file := range vars.FileApiMap {
+		for _, api := range vars.FileApiMap[file] {
+			if s == api {
+				return file
+			}
+		}
+	}
+	return ""
 }
 
 func ParamType(s string) string {
@@ -76,9 +115,7 @@ func ParamType(s string) string {
 	} else if s == "boolean" {
 		return "NullBool"
 	} else if s == "short" || s == "long" || s == "integer" {
-		return "NullInt64"
-	} else if s == "uuid" {
-		return "ID"
+		return "NullNumber"
 	} else if s == "list" {
 		return "[]string"
 	} else if s == "map" {
@@ -92,7 +129,7 @@ func RespType(s string) string {
 	if s == "boolean" {
 		return "NullBool"
 	} else if s == "short" || s == "long" || s == "integer" {
-		return "NullInt64"
+		return "NullNumber"
 	} else if s == "responseobject" {
 		return "json.RawMessage"
 	} else {
@@ -126,6 +163,36 @@ func IsSecurityGroupCommand(s string) bool {
 func IsId(s string) bool  { return strings.HasSuffix(strings.ToLower(s), "id") }
 func IsIds(s string) bool { return strings.HasSuffix(strings.ToLower(s), "ids") }
 
+func Comment(s string) string {
+	maxlen := 80
+	words := strings.Split(s, " ")
+	lines := []string{}
+
+	// initialize line
+	line := []string{"//"}
+	lineLen := 2
+
+	if strings.TrimSpace(s) == "" {
+		return ""
+	}
+
+	for _, word := range words {
+		if lineLen+1+len(word) > maxlen {
+			lines = append(lines, strings.Join(line, " "))
+			line = []string{"//"}
+			lineLen = 2
+		}
+		line = append(line, word)
+		lineLen = lineLen + 1 + len(word)
+	}
+	if lineLen > 2 {
+		lines = append(lines, strings.Join(line, " "))
+	}
+	// fmt.Println(s)
+	// fmt.Print(strings.Join(lines, "\n"))
+	return strings.Join(lines, "\n")
+}
+
 func ImportStrings(params []Param) bool {
 	b := false
 	for _, p := range params {
@@ -149,6 +216,8 @@ func main() {
 		"title":                  strings.Title,
 		"toLower":                strings.ToLower,
 		"objectName":             GetObjectName,
+		"camel":                  GetCamelCase,
+		"comment":                Comment,
 		"respType":               RespType,
 		"paramType":              ParamType,
 		"isList":                 IsList,
@@ -189,6 +258,10 @@ func main() {
 		}
 		fmt.Println(api.Name)
 		ParamList(api.Params).Sort()
+		api.Params = Unique(api.Params,
+			func(x interface{}, y interface{}) bool {
+				return x.(Param).Name == y.(Param).Name
+			}).([]Param)
 		ResponseList(api.Response).Sort()
 
 		var b bytes.Buffer
@@ -201,12 +274,34 @@ func main() {
 		source, err := format.Source([]byte(s))
 		if err != nil {
 			log.Println(err)
-			ioutil.WriteFile(
-				directory+"/"+strings.ToLower(api.Name)+".go", []byte(s), 0644)
-		} else {
-			ioutil.WriteFile(
-				directory+"/"+strings.ToLower(api.Name)+".go", source, 0644)
+			source = []byte(s)
 		}
+
+		fname := GetFileFromApi(api.Name)
+		if fname == "" {
+			log.Printf("Not Found file for API: %s\n", api.Name)
+			fname = strings.ToLower(api.Name)
+		}
+		fpath := directory + "/" + fname + "Api.go"
+
+		var f *os.File
+		if _, err := os.Stat(fpath); os.IsNotExist(err) {
+			f, err = os.OpenFile(fpath, os.O_CREATE|os.O_WRONLY, 0666)
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer f.Close()
+			f.WriteString("package cloudstack\n\n")
+		} else {
+			f, err = os.OpenFile(fpath, os.O_APPEND|os.O_WRONLY, 0666)
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer f.Close()
+		}
+		f.Write(source)
+		f.WriteString("\n")
+		f.Close()
 	}
 
 	directory = "structs"
@@ -228,16 +323,37 @@ func main() {
 		source, err := format.Source([]byte(s))
 		if err != nil {
 			log.Println(err)
-			ioutil.WriteFile(
-				directory+"/"+strings.ToLower(GetObjectName(api.Name))+"-"+strings.ToLower(api.Name)+".go", []byte(s), 0644)
-		} else {
-			ioutil.WriteFile(
-				directory+"/"+strings.ToLower(GetObjectName(api.Name))+"-"+strings.ToLower(api.Name)+".go", source, 0644)
+			source = []byte(s)
 		}
+
+		objName := GetCamelCase(strings.ToLower(GetObjectName(api.Name)))
+		fname := directory + "/" + objName + "Struct-" + strings.ToLower(api.Name) + ".go"
+		ioutil.WriteFile(fname, source, 0644)
 	}
 
-	f, err := os.Create("isasync.txt")
+	isAsyncFile, err := os.Create("isasync.txt")
 	for _, api := range resp.ListApisResponse.Api {
-		f.WriteString(fmt.Sprintf("\"%v\": %v,\n", api.Name, api.IsAsync))
+		isAsyncFile.WriteString(fmt.Sprintf("\"%v\": %v,\n", api.Name, api.IsAsync))
 	}
+	isAsyncFile.Close()
+
+	names := make([]string, 0)
+	for _, api := range resp.ListApisResponse.Api {
+		for i := range api.Params {
+			names = append(names, strings.ToLower(api.Params[i].Name))
+		}
+		for i := range api.Response {
+			names = append(names, strings.ToLower(api.Response[i].Name))
+		}
+	}
+	sort.Strings(names)
+	names = Unique(names,
+		func(s, t interface{}) bool { return s.(string) == t.(string) }).([]string)
+
+	namesFile, err := os.Create("names.txt")
+	for i := range names {
+		namesFile.WriteString(fmt.Sprintf("%s\n", names[i]))
+	}
+	namesFile.Close()
+
 }

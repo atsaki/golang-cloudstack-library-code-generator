@@ -1,181 +1,25 @@
-package cloudstack
 
-import (
-    "encoding/json"
-    "fmt"
-    "log"
-
-    {{ if importStrings .Params }}
-      "strings"
-    {{ end }}
-)
-
+// Parameter of {{ title .Name }}
 type {{ title .Name }}Parameter struct {
   {{ range $param := .Params }}
-    {{ title $param.Name }} {{ paramType $param.Type }}
-  {{ end }}
-}
-
-{{ range $param := .Params }}
-  {{ if isString $param.Type }}
-    func (p *{{ title $.Name }}Parameter) Set{{ title $param.Name }}(s string) {
-        p.{{ title $param.Name }}.String = s
-        p.{{ title $param.Name }}.Valid = true
-    }
-  {{ else if isBoolean $param.Type }}
-    func (p *{{ title $.Name }}Parameter) Set{{ title $param.Name }}(b bool) {
-        p.{{ title $param.Name }}.Bool = b
-        p.{{ title $param.Name }}.Valid = true
-    }
-  {{ else if isInteger $param.Type }}
-    func (p *{{ title $.Name }}Parameter) Set{{ title $param.Name }}(n int64) {
-        p.{{ title $param.Name }}.Int64 = n
-        p.{{ title $param.Name }}.Valid = true
-    }
-  {{ else if isUUID $param.Type }}
-    func (p *{{ title $.Name }}Parameter) Set{{ title $param.Name }}(s string) {
-        p.{{ title $param.Name }}.String = s
-        p.{{ title $param.Name }}.Valid = true
-    }
-  {{ else if isList $param.Type }}
-    func (p *{{ title $.Name }}Parameter) Set{{ title $param.Name }}(l []string) {
-        p.{{ title $param.Name }} = l
-    }
-  {{ else if isMap $param.Type }}
-    func (p *{{ title $.Name }}Parameter) Set{{ title $param.Name }}(m map[string]string) {
-        p.{{ title $param.Name }} = m
-    }
-  {{ end }}
-{{ end }}
-
-func (p *{{ title .Name }}Parameter) ToMap() map[string]string {
-    m := map[string]string{}
-    {{ range $param := .Params }}
-
-      {{ if isString $param.Type }}
-        if p.{{ title $param.Name }}.Valid {
-          m["{{ $param.Name }}"] = fmt.Sprint(p.{{ title $param.Name }}.String)
-        }
-      {{ end }}
-
-      {{ if isBoolean $param.Type }}
-        if p.{{ title $param.Name }}.Valid {
-          m["{{ $param.Name }}"] = fmt.Sprint(p.{{ title $param.Name }}.Bool)
-        }
-      {{ end }}
-
-      {{ if isInteger $param.Type }}
-        if p.{{ title $param.Name }}.Valid {
-          m["{{ $param.Name }}"] = fmt.Sprint(p.{{ title $param.Name }}.Int64)
-        }
-      {{ end }}
-
-      {{ if isUUID $param.Type }}
-        if p.{{ title $param.Name }}.Valid {
-          m["{{ $param.Name }}"] = fmt.Sprint(p.{{ title $param.Name }}.String)
-        }
-      {{ end }}
-
-      {{ if isList $param.Type }}
-          if len(p.{{ title $param.Name }}) > 0 {
-            m["{{ $param.Name }}"] = strings.Join(p.{{ title $param.Name }}, ",")
-          }
-      {{ end }}
-
-      {{ if isMap $param.Type }}
-        if len(p.{{ title $param.Name }}) > 0 {
-          i := 0
-          for key, value := range m {
-              m[fmt.Sprintf("{{ $param.Name }}[%d].key", i)] = key
-              m[fmt.Sprintf("{{ $param.Name }}[%d].value", i)] = value
-              i += 1
-          }
-        }
-      {{ end }}
-
+    {{ comment .Description }}
+    {{ if isId $param.Name }}
+      {{ camel $param.Name }} ID
+    {{ else }}
+      {{ camel $param.Name }} {{ paramType $param.Type }}
     {{ end }}
-    return m
+  {{ end }}
 }
 
+{{ comment .Description }}
 {{ if isListAPI .Name }}
-  func (c *Client) {{ title .Name }}(p {{ title .Name }}Parameter) ([]{{ objectName .Name | title }}, error) {
-      var v map[string]json.RawMessage
-      var ret []{{ objectName .Name | title }}
-      b, err := c.Request("{{ .Name }}", p.ToMap())
-      if err != nil {
-          log.Println("Request failed:", err)
-          return ret, err
-      }
-      err = json.Unmarshal(b, &v)
-      if err != nil {
-          return ret, fmt.Errorf("Failed to unmarshal: %s", string(b))
-      }
-
-      content, ok := v["{{ objectName .Name | toLower  }}"]
-      if !ok {
-          if len(v) == 0 {
-              return ret, nil
-          }
-          errortext, _ := v["errortext"]
-          if ok {
-              return ret, fmt.Errorf(string(errortext))
-          } else {
-              return ret, fmt.Errorf("Unexpected format")
-          }
-      }
-      err = json.Unmarshal(content, &ret)
-      if err != nil {
-          return ret, fmt.Errorf("Failed to unmarshal: %s", string(content))
-      }
-      return ret, nil
+  func (c *Client) {{ title .Name }}(p *{{ title .Name }}Parameter) (objs []{{ objectName .Name | camel }}, err error) {
+    err = c.request(p, &objs)
+    return objs, err
   }
 {{ else }}
-  func (c *Client) {{ title .Name }}(p {{ title .Name }}Parameter) ({{ objectName .Name | title }}, error) {
-  {{ if (objectName .Name | isResult) }}
-      var ret Result
-      b, err := c.Request("{{ .Name }}", p.ToMap())
-      if err != nil {
-          log.Println("Request failed:", err)
-          return ret, err
-      }
-      err = json.Unmarshal(b, &ret)
-      if err != nil {
-          return ret, fmt.Errorf("Failed to unmarshal: %s", string(b))
-      }
-      return ret, nil
-  {{ else }}
-      var v map[string]json.RawMessage
-      var ret {{ objectName .Name | title }}
-      b, err := c.Request("{{ .Name }}", p.ToMap())
-      if err != nil {
-          log.Println("Request failed:", err)
-          return ret, err
-      }
-      err = json.Unmarshal(b, &v)
-      if err != nil {
-          return ret, fmt.Errorf("Failed to unmarshal: %s", string(b))
-      }
-
-      {{ if isIpAddressCommand .Name }}
-      content, ok := v["ipaddress"]
-      {{ else if isSecurityGroupCommand .Name }}
-      content, ok := v["securitygroup"]
-      {{ else }}
-      content, ok := v["{{ objectName .Name | toLower  }}"]
-      {{ end }}
-      if !ok {
-          errortext, ok := v["errortext"]
-          if ok {
-              return ret, fmt.Errorf(string(errortext))
-          } else {
-              return ret, fmt.Errorf("Unexpected format")
-          }
-      }
-      err = json.Unmarshal(content, &ret)
-      if err != nil {
-          return ret, fmt.Errorf("Failed to unmarshal: %s", string(content))
-      }
-      return ret, nil
-  {{ end }}
+  func (c *Client) {{ title .Name }}(p *{{ title .Name }}Parameter) (obj *{{ objectName .Name | camel }}, err error) {
+    err = c.request(p, &obj)
+    return obj, err
   }
 {{ end }}

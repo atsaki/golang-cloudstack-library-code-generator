@@ -1,29 +1,30 @@
 package cloudstack
 
-type {{ objectName .Name | title }} struct {
+type {{ objectName .Name | camel }} struct {
   {{ range $resp1 := .Response }}
+    {{ comment $resp1.Description }}
     {{ if and (isList $resp1.Type) $resp1.Response }} 
       {{ if isTags $resp1.Name }} 
-        Tag []Tag `json:"tags"`
+        Tags []Tag `json:"tags"`
       {{ else if isService $resp1.Name }}
-        Service []Networkservice `json:"service"`
+        Service []NetworkService `json:"service"`
       {{ else if isEgressRule $resp1.Name }}
-       Egressrule  []Securitygroupegress  `json:"egressrule"`
+       EgressRule  []SecurityGroupEgress  `json:"egressrule"`
       {{ else if isIngressRule $resp1.Name }}
-       Ingressrule  []Securitygroupingress  `json:"ingressrule"`
+       IngresRrule  []SecurityGroupIngress  `json:"ingressrule"`
       {{ else }}
-        {{ title $resp1.Name }} []{{ title $resp1.Name }}  `json:"{{ toLower $resp1.Name }}"`
+        {{ camel $resp1.Name }} []{{ camel $resp1.Name }}  `json:"{{ toLower $resp1.Name }}"`
       {{ end }}
     {{ else if isList $resp1.Type }}
       {{ if isIds $resp1.Name }}
-        {{ title $resp1.Name }} []ID `json:"{{ toLower $resp1.Name }}"`
+        {{ camel $resp1.Name }} []ID `json:"{{ toLower $resp1.Name }}"`
       {{ else }}
-        {{ title $resp1.Name }} []NullString `json:"{{ toLower $resp1.Name }}"`
+        {{ camel $resp1.Name }} []NullString `json:"{{ toLower $resp1.Name }}"`
       {{ end }}
     {{ else if isId $resp1.Name }}
-      {{ title $resp1.Name }} ID `json:"{{ toLower $resp1.Name }}"`
+      {{ camel $resp1.Name }} ID `json:"{{ toLower $resp1.Name }}"`
     {{ else if $resp1.Name }}
-      {{ title $resp1.Name }} {{ respType $resp1.Type }} `json:"{{ toLower $resp1.Name }}"`
+      {{ camel $resp1.Name }} {{ respType $resp1.Type }} `json:"{{ toLower $resp1.Name }}"`
     {{ end }}
   {{ end }}
 }
