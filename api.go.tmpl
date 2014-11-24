@@ -1,14 +1,30 @@
 
-// Parameter of {{ title .Name }}
+// {{ title .Name }} represents the paramter of {{ title .Name }}
 type {{ title .Name }}Parameter struct {
   {{ range $param := .Params }}
     {{ comment .Description }}
     {{ if isId $param.Name }}
       {{ camel $param.Name }} ID
     {{ else }}
-      {{ camel $param.Name }} {{ paramType $param.Type }}
+      {{ camel $param.Name }} {{ paramNullType $param.Type }}
     {{ end }}
   {{ end }}
+}
+
+func New{{ title .Name }}Parameter({{ range $param := .Params }}{{ if $param.Required }}{{ toLower $param.Name | modReservedName }} {{ paramType $param.Type }},{{ end }}{{ end }}) (p*{{ title .Name }}Parameter) {
+  p = new({{ title .Name }}Parameter)
+  {{ range $param := .Params }}
+    {{ if $param.Required }}
+      {{ if isList $param.Type }}
+        p.{{ camel $param.Name }} = {{ toLower $param.Name | modReservedName }}
+      {{ else if isMap $param.Type }}
+        p.{{ camel $param.Name }} = {{ toLower $param.Name | modReservedName }}
+      {{ else }}
+        p.{{ camel $param.Name }}.Set({{ toLower $param.Name | modReservedName }})
+      {{ end }}
+    {{ end }}
+  {{ end }}
+  return p
 }
 
 {{ comment .Description }}

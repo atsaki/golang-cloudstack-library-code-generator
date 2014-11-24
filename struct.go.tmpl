@@ -11,7 +11,7 @@ type {{ objectName .Name | camel }} struct {
       {{ else if isEgressRule $resp1.Name }}
        EgressRule  []SecurityGroupEgress  `json:"egressrule"`
       {{ else if isIngressRule $resp1.Name }}
-       IngresRrule  []SecurityGroupIngress  `json:"ingressrule"`
+       IngressRule  []SecurityGroupIngress  `json:"ingressrule"`
       {{ else }}
         {{ camel $resp1.Name }} []{{ camel $resp1.Name }}  `json:"{{ toLower $resp1.Name }}"`
       {{ end }}

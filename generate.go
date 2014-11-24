@@ -109,7 +109,32 @@ func GetFileFromApi(s string) string {
 	return ""
 }
 
+func ModifyReservedName(s string) string {
+	switch s {
+	case "type":
+		return "typ"
+	default:
+		return s
+	}
+}
+
 func ParamType(s string) string {
+	if s == "string" || s == "tzdata" {
+		return "string"
+	} else if s == "boolean" {
+		return "bool"
+	} else if s == "short" || s == "long" || s == "integer" {
+		return "int"
+	} else if s == "list" {
+		return "[]string"
+	} else if s == "map" {
+		return "map[string]string"
+	} else {
+		return "string"
+	}
+}
+
+func ParamNullType(s string) string {
 	if s == "string" || s == "tzdata" {
 		return "NullString"
 	} else if s == "boolean" {
@@ -217,9 +242,11 @@ func main() {
 		"toLower":                strings.ToLower,
 		"objectName":             GetObjectName,
 		"camel":                  GetCamelCase,
+		"modReservedName":        ModifyReservedName,
 		"comment":                Comment,
 		"respType":               RespType,
 		"paramType":              ParamType,
+		"paramNullType":          ParamNullType,
 		"isList":                 IsList,
 		"isBoolean":              IsBoolean,
 		"isUUID":                 IsUUID,
@@ -356,4 +383,20 @@ func main() {
 	}
 	namesFile.Close()
 
+	commandsFile, err := os.Create("commands.txt")
+	commandsFile.WriteString("var commands = map[string]Command{\n")
+	for _, api := range resp.ListApisResponse.Api {
+		switch GetObjectName(api.Name) {
+		case "publicipaddress":
+			commandsFile.WriteString(fmt.Sprintf(
+				"\"%s\": {IsAsync: %v, Object: \"%s\"},\n",
+				api.Name, api.IsAsync, "ipaddress"))
+		default:
+			commandsFile.WriteString(fmt.Sprintf(
+				"\"%s\": {IsAsync: %v, Object: \"%s\"},\n",
+				api.Name, api.IsAsync, GetObjectName(api.Name)))
+		}
+	}
+	commandsFile.WriteString("}")
+	commandsFile.Close()
 }
