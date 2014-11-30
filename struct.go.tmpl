@@ -1,6 +1,9 @@
 package cloudstack
 
 type {{ objectName .Name | camel }} struct {
+
+  ResourceBase
+
   {{ range $resp1 := .Response }}
     {{ comment $resp1.Description }}
     {{ if and (isList $resp1.Type) $resp1.Response }} 
@@ -8,8 +11,14 @@ type {{ objectName .Name | camel }} struct {
         Tags []Tag `json:"tags"`
       {{ else if isService $resp1.Name }}
         Service []NetworkService `json:"service"`
+      {{ else if eq $resp1.Name "capability" }}
+        Capability []NetworkServiceCapability `json:"capability"`
+      {{ else if eq $resp1.Name "provider" }}
+        Provider []NetworkServiceProvider `json:"provider"`
       {{ else if isEgressRule $resp1.Name }}
        EgressRule  []SecurityGroupEgress  `json:"egressrule"`
+      {{ else if isIngressRule $resp1.Name }}
+       IngressRule  []SecurityGroupIngress  `json:"ingressrule"`
       {{ else if isIngressRule $resp1.Name }}
        IngressRule  []SecurityGroupIngress  `json:"ingressrule"`
       {{ else }}

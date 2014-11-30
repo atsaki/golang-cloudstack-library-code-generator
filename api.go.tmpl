@@ -29,13 +29,19 @@ func New{{ title .Name }}Parameter({{ range $param := .Params }}{{ if $param.Req
 
 {{ comment .Description }}
 {{ if isListAPI .Name }}
-  func (c *Client) {{ title .Name }}(p *{{ title .Name }}Parameter) (objs []{{ objectName .Name | camel }}, err error) {
-    err = c.request(p, &objs)
-    return objs, err
+  func (c *Client) {{ title .Name }}(p *{{ title .Name }}Parameter) ([]*{{ objectName .Name | camel }}, error) {
+    obj, err := c.Request("{{ .Name }}", convertParamToMap(p))
+    if err != nil {
+        return nil, err
+    }
+    return obj.([]*{{ objectName .Name | camel }}), err
   }
 {{ else }}
-  func (c *Client) {{ title .Name }}(p *{{ title .Name }}Parameter) (obj *{{ objectName .Name | camel }}, err error) {
-    err = c.request(p, &obj)
-    return obj, err
+  func (c *Client) {{ title .Name }}(p *{{ title .Name }}Parameter) (*{{ objectName .Name | camel }}, error) {
+    obj, err := c.Request("{{ .Name }}", convertParamToMap(p))
+    if err != nil {
+        return nil, err
+    }
+    return obj.(*{{ objectName .Name | camel }}), err
   }
 {{ end }}

@@ -33,19 +33,30 @@ type Response struct {
 	Response    []Response `json:"response"`
 }
 
+type Api struct {
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	IsAsync     bool       `json:"isasync"`
+	Related     string     `json:"related"`
+	Since       string     `json:"since"`
+	Params      []Param    `json:"params"`
+	Response    []Response `json:"response"`
+}
+
 type ListApisResponse struct {
 	ListApisResponse struct {
 		Count float64 `json:"count"`
-		Api   []struct {
-			Name        string     `json:"name"`
-			Description string     `json:"description"`
-			IsAsync     bool       `json:"isasync"`
-			Related     string     `json:"related"`
-			Since       string     `json:"since"`
-			Params      []Param    `json:"params"`
-			Response    []Response `json:"response"`
-		} `json:"api"`
+		Api   []Api   `json:"api"`
 	} `json:"listapisresponse"`
+}
+
+type ApiList []Api
+
+func (l ApiList) Len() int           { return len(l) }
+func (l ApiList) Swap(i, j int)      { l[i], l[j] = l[j], l[i] }
+func (l ApiList) Less(i, j int) bool { return l[i].Name < l[j].Name }
+func (l ApiList) Sort() {
+	sort.Sort(l)
 }
 
 type ParamList []Param
@@ -331,7 +342,7 @@ func main() {
 		f.Close()
 	}
 
-	directory = "structs"
+	directory = "structs-api"
 	tmpl = template.Must(
 		template.New("struct.go.tmpl").Funcs(funcMap).ParseFiles("struct.go.tmpl"))
 
@@ -383,20 +394,29 @@ func main() {
 	}
 	namesFile.Close()
 
+	apis := resp.ListApisResponse.Api
+	ApiList(apis).Sort()
 	commandsFile, err := os.Create("commands.txt")
-	commandsFile.WriteString("var commands = map[string]Command{\n")
-	for _, api := range resp.ListApisResponse.Api {
-		switch GetObjectName(api.Name) {
-		case "publicipaddress":
-			commandsFile.WriteString(fmt.Sprintf(
-				"\"%s\": {IsAsync: %v, Object: \"%s\"},\n",
-				api.Name, api.IsAsync, "ipaddress"))
-		default:
-			commandsFile.WriteString(fmt.Sprintf(
-				"\"%s\": {IsAsync: %v, Object: \"%s\"},\n",
-				api.Name, api.IsAsync, GetObjectName(api.Name)))
-		}
+	commandsFile.WriteString("func getCommand(name string) *Command {\n")
+	commandsFile.WriteString("switch strings.ToLower(name) {\n")
+	for _, api := range apis {
+		commandsFile.WriteString(fmt.Sprintf(
+			`case "%s": 
+					     return &Command {
+					         Name: "%s",
+				             IsAsync: %v,
+						     IsList: %v,
+						     ObjectType : "%s",
+				         }
+				 `,
+			strings.ToLower(api.Name), api.Name, api.IsAsync,
+			IsListAPI(api.Name), GetObjectName(api.Name)))
 	}
+	commandsFile.WriteString(`
+	    default:
+			return nil
+	}
+    `)
 	commandsFile.WriteString("}")
 	commandsFile.Close()
 }
