@@ -279,15 +279,16 @@ func main() {
 	}
 
 	var tmpl *template.Template
-	var directory string
 	var resp ListApisResponse
 	if err := json.Unmarshal(input, &resp); err != nil {
 		panic(err)
 	}
 
-	directory = "apis"
-	tmpl = template.Must(
-		template.New("api.go.tmpl").Funcs(funcMap).ParseFiles("api.go.tmpl"))
+	tmpl = template.Must(template.New(vars.ApiTemplateFile).Funcs(funcMap).ParseFiles(vars.ApiTemplateFile))
+
+	if err := os.MkdirAll(vars.ApiOutputDir, 0755); err != nil {
+		log.Fatal(err)
+	}
 
 	for _, api := range resp.ListApisResponse.Api {
 
@@ -320,7 +321,7 @@ func main() {
 			log.Printf("Not Found file for API: %s\n", api.Name)
 			fname = strings.ToLower(api.Name)
 		}
-		fpath := directory + "/" + fname + "Api.go"
+		fpath := vars.ApiOutputDir + "/" + fname + "Api.go"
 
 		var f *os.File
 		if _, err := os.Stat(fpath); os.IsNotExist(err) {
@@ -342,9 +343,11 @@ func main() {
 		f.Close()
 	}
 
-	directory = "structs-api"
-	tmpl = template.Must(
-		template.New("struct.go.tmpl").Funcs(funcMap).ParseFiles("struct.go.tmpl"))
+	tmpl = template.Must(template.New(vars.StructTemplateFile).Funcs(funcMap).ParseFiles(vars.StructTemplateFile))
+
+	if err := os.MkdirAll(vars.StructOutputDir, 0755); err != nil {
+		log.Fatal(err)
+	}
 
 	for _, api := range resp.ListApisResponse.Api {
 
@@ -365,7 +368,7 @@ func main() {
 		}
 
 		objName := GetCamelCase(strings.ToLower(GetObjectName(api.Name)))
-		fname := directory + "/" + objName + "Struct-" + strings.ToLower(api.Name) + ".go"
+		fname := vars.StructOutputDir + "/" + objName + "Struct-" + strings.ToLower(api.Name) + ".go"
 		ioutil.WriteFile(fname, source, 0644)
 	}
 

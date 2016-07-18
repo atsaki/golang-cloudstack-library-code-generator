@@ -1,5 +1,10 @@
 package vars
 
+const ApiOutputDir = "apis"
+const ApiTemplateFile = "api.go.tmpl"
+const StructOutputDir = "structs"
+const StructTemplateFile = "struct.go.tmpl"
+
 var SupportedAPIs = map[string]bool{
 	"associateIpAddress":                true,
 	"disassociateIpAddress":             true,
