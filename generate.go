@@ -166,6 +166,8 @@ func RespType(s string) string {
 		return "NullBool"
 	} else if s == "short" || s == "long" || s == "integer" {
 		return "NullNumber"
+	} else if s == "map" {
+		return "map[string]string"
 	} else if s == "responseobject" {
 		return "json.RawMessage"
 	} else {
@@ -181,7 +183,9 @@ func IsMap(s string) bool     { return s == "map" }
 func IsList(s string) bool    { return s == "list" || s == "set" }
 func IsResult(s string) bool  { return strings.ToLower(s) == "result" }
 
-func IsListAPI(s string) bool             { return strings.HasPrefix(strings.ToLower(s), "list") }
+func IsListAPI(s string) bool {
+	return strings.HasPrefix(strings.ToLower(s), "list") && strings.ToLower(s) != "listtemplatepermissions"
+}
 func IsQueryAsyncJobResult(s string) bool { return strings.ToLower(s) == "queryasyncjobresult" }
 func IsTags(s string) bool                { return strings.ToLower(s) == "tags" }
 func IsService(s string) bool             { return strings.ToLower(s) == "service" }
